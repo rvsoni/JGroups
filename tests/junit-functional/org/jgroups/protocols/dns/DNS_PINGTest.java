@@ -41,26 +41,11 @@ public class DNS_PINGTest {
    }
 
    @Test
-   public void test_failing_on_no_dns_address() throws Exception {
-      //given
-      DNS_PING ping = new DNS_PING();
-      ping.dns_query = "fake";
-
-      //when
-      try {
-         ping.validateProperties();
-         Assert.fail();
-      } catch (IllegalArgumentException e) {
-         //then
-      }
-   }
-
-   @Test
    public void test_valid_dns_response() throws Exception {
       //given
       DNSDiscoveryTester dns_discovery_tester = new DNSDiscoveryTester(2, PORT_START, 500, TimeUnit.SECONDS)
-            .add("test", DNSResolver.DNSRecordType.A, new IpAddress(InetAddress.getLoopbackAddress(), PORT_START))
-            .add("test", DNSResolver.DNSRecordType.A, new IpAddress(InetAddress.getLoopbackAddress(), PORT_START + 1));
+            .add("test.svc.cluster.local", DNSResolver.DNSRecordType.A, new IpAddress(InetAddress.getLoopbackAddress(), PORT_START))
+            .add("test.svc.cluster.local", DNSResolver.DNSRecordType.A, new IpAddress(InetAddress.getLoopbackAddress(), PORT_START + 1));
 
       //when
       boolean was_view_received = dns_discovery_tester.runTestAndCheckIfViewWasReceived("test", "A");

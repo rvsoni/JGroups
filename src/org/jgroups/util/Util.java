@@ -31,6 +31,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.IntFunction;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -61,7 +63,6 @@ public class Util {
     private static final byte TYPE_SHORT        = 17;
     private static final byte TYPE_STRING       = 18; // ascii
     private static final byte TYPE_BYTEARRAY    = 19;
-    private static final byte TYPE_EXCEPTION    = 20;
     private static final byte TYPE_UTF_STRING   = 21; // multibyte charset
 
     // constants
@@ -506,9 +507,6 @@ public class Util {
                 byte[] tmp=new byte[length];
                 System.arraycopy(buffer,offset,tmp,0,length);
                 return (T)tmp;
-            case TYPE_EXCEPTION:
-                in=new ByteArrayDataInputStream(buffer,offset,length);
-                return (T)Util.exceptionFromStream(in);
             default:
                 throw new IllegalArgumentException("type " + type + " is invalid");
         }
@@ -522,15 +520,6 @@ public class Util {
     public static byte[] objectToByteBuffer(Object obj) throws Exception {
         if(obj == null)
             return TYPE_NULL_ARRAY;
-
-        if(obj instanceof Throwable) {
-            ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(512, true);
-            out.write(TYPE_EXCEPTION);
-            Util.exceptionToStream((Throwable)obj, out);
-            byte[] ret=new byte[out.position()];
-            System.arraycopy(out.buffer(), 0, ret, 0, out.position());
-            return ret;
-        }
 
         if(obj instanceof Streamable) {
             int expected_size=obj instanceof SizeStreamable? ((SizeStreamable)obj).serializedSize() : 512;
@@ -558,13 +547,6 @@ public class Util {
     public static Buffer objectToBuffer(Object obj) throws Exception {
         if(obj == null)
             return new Buffer(TYPE_NULL_ARRAY);
-
-        if(obj instanceof Throwable) {
-            ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(512, true);
-            out.write(TYPE_EXCEPTION);
-            Util.exceptionToStream((Throwable)obj, out);
-            return out.getBuffer();
-        }
 
         if(obj instanceof Streamable) {
             int expected_size=obj instanceof SizeStreamable? ((SizeStreamable)obj).serializedSize() : 512;
@@ -657,12 +639,6 @@ public class Util {
     public static void objectToStream(Object obj, DataOutput out) throws Exception {
         if(obj == null) {
             out.write(TYPE_NULL);
-            return;
-        }
-
-        if(obj instanceof Throwable) {
-            out.write(TYPE_EXCEPTION);
-            Util.exceptionToStream((Throwable)obj, out);
             return;
         }
 
@@ -776,16 +752,17 @@ public class Util {
                 byte[] tmpbuf=new byte[len];
                 in.readFully(tmpbuf,0,tmpbuf.length);
                 return (T)tmpbuf;
-            case TYPE_EXCEPTION:
-                return (T)Util.exceptionFromStream(in);
             default:
                 throw new IllegalArgumentException("type " + b + " is invalid");
         }
     }
 
-
     public static <T extends Streamable> T streamableFromByteBuffer(Class<? extends Streamable> cl,byte[] buffer) throws Exception {
         return streamableFromByteBuffer(cl,buffer,0,buffer.length);
+    }
+
+    public static <T extends Streamable> T streamableFromByteBuffer(Supplier<T> factory, byte[] buffer) throws Exception {
+        return streamableFromByteBuffer(factory, buffer, 0, buffer.length);
     }
 
     /**
@@ -947,7 +924,6 @@ public class Util {
         }
     }
 
-
     public static <T extends Streamable> T streamableFromByteBuffer(Class<? extends Streamable> cl,byte[] buffer,int offset,int length) throws Exception {
         if(buffer == null) return null;
         DataInput in=new ByteArrayDataInputStream(buffer,offset,length);
@@ -956,12 +932,24 @@ public class Util {
         return retval;
     }
 
+    public static <T extends Streamable> T streamableFromByteBuffer(Supplier<T> factory, byte[] buffer, int offset, int length) throws Exception {
+        if(buffer == null) return null;
+        DataInput in=new ByteArrayDataInputStream(buffer,offset,length);
+        T retval=factory.get();
+        retval.readFrom(in);
+        return retval;
+    }
 
+    @Deprecated
     public static <T extends Streamable> T streamableFromBuffer(Class<T> clazz,byte[] buffer,int offset,int length) throws Exception {
         DataInput in=new ByteArrayDataInputStream(buffer,offset,length);
         return Util.readStreamable(clazz, in);
     }
 
+    public static <T extends Streamable> T streamableFromBuffer(Supplier<T> factory, byte[] buffer, int offset, int length) throws Exception {
+        DataInput in=new ByteArrayDataInputStream(buffer,offset,length);
+        return Util.readStreamable(factory, in);
+    }
 
     public static byte[] streamableToByteBuffer(Streamable obj) throws Exception {
         int expected_size=obj instanceof SizeStreamable? ((SizeStreamable)obj).serializedSize() : 512;
@@ -1467,10 +1455,29 @@ public class Util {
      * @return Collection of Address objects
      * @throws Exception
      */
+    @Deprecated
     public static Collection<? extends Address> readAddresses(DataInput in,Class cl) throws Exception {
         short length=in.readShort();
         if(length < 0) return null;
         Collection<Address> retval=(Collection<Address>)cl.newInstance();
+        Address addr;
+        for(int i=0; i < length; i++) {
+            addr=Util.readAddress(in);
+            retval.add(addr);
+        }
+        return retval;
+    }
+
+    /**
+     * @param in
+     * @param factory a factory for creating the returned collection, parameterized by size
+     * @return Collection of Address objects
+     * @throws Exception
+     */
+    public static <T extends Collection<Address>> T readAddresses(DataInput in, IntFunction<T> factory) throws Exception {
+        short length=in.readShort();
+        if(length < 0) return null;
+        T retval = factory.apply(length);
         Address addr;
         for(int i=0; i < length; i++) {
             addr=Util.readAddress(in);
@@ -1525,7 +1532,7 @@ public class Util {
         obj.writeTo(out);
     }
 
-
+    @Deprecated
     public static <T extends Streamable> T readStreamable(Class<T> clazz,DataInput in) throws Exception {
         T retval=null;
         if(!in.readBoolean())
@@ -1535,6 +1542,14 @@ public class Util {
         return retval;
     }
 
+    public static <T extends Streamable> T readStreamable(Supplier<T> factory, DataInput in) throws Exception {
+        T retval=null;
+        if(!in.readBoolean())
+            return null;
+        retval=factory.get();
+        retval.readFrom(in);
+        return retval;
+    }
 
     public static void writeGenericStreamable(Streamable obj, DataOutput out) throws Exception {
         short magic_number;

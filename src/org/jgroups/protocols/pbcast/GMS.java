@@ -56,7 +56,7 @@ public class GMS extends Protocol implements DiagnosticsHandler.ProbeHandler {
     @Property(description="Timeout (in ms) to complete merge")
     protected long merge_timeout=5000; // time to wait for all MERGE_RSPS
 
-    @Property(description="Number of join attempts before we give up and become a singleton. Zero means 'never give up'.")
+    @Property(description="Number of join attempts before we give up and become a singleton. 0 means 'never give up'.")
     protected long max_join_attempts=10;
 
     @Property(description="Print local address of this member after connect. Default is true")
@@ -106,7 +106,8 @@ public class GMS extends Protocol implements DiagnosticsHandler.ProbeHandler {
 
     /** @deprecated true by default */
     @Property(description="Whether or not to install a new view locally first before broadcasting it " +
-      "(only done at the coord ). Set to true automatically if a state transfer protocol is detected")
+      "(only done at the coord ). Set to true automatically if a state transfer protocol is detected",
+              deprecatedMessage = "ignored and enabled by default")
     @Deprecated
     protected boolean install_view_locally_first=true; // https://issues.jboss.org/browse/JGRP-1751
 
@@ -892,7 +893,8 @@ public class GMS extends Protocol implements DiagnosticsHandler.ProbeHandler {
                     return null;
 
                 // Discards view with id lower than or equal to our own. Will be installed without check if it is the first view
-                if(view != null && new_view.getViewId().compareToIDs(view.getViewId()) <= 0)
+                ViewId viewId = this.getViewId();
+                if (viewId != null && new_view.getViewId().compareToIDs(viewId) <= 0)
                     return null;
                 if(new_view instanceof DeltaView) {
                     try {
@@ -1213,7 +1215,7 @@ public class GMS extends Protocol implements DiagnosticsHandler.ProbeHandler {
 
     protected JoinRsp readJoinRsp(byte[] buffer, int offset, int length) {
         try {
-            return buffer != null? Util.streamableFromBuffer(JoinRsp.class, buffer, offset, length) : null;
+            return buffer != null? Util.streamableFromBuffer(JoinRsp::new, buffer, offset, length) : null;
         }
         catch(Exception ex) {
             log.error("%s: failed reading JoinRsp from message: %s", local_addr, ex);
@@ -1225,7 +1227,7 @@ public class GMS extends Protocol implements DiagnosticsHandler.ProbeHandler {
         if(buffer == null) return null;
         try {
             DataInput in=new ByteArrayDataInputStream(buffer, offset, length);
-            return Util.readAddresses(in, ArrayList.class);
+            return Util.readAddresses(in, ArrayList::new);
         }
         catch(Exception ex) {
             log.error("%s: failed reading members from message: %s", local_addr, ex);

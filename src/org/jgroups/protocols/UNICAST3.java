@@ -36,7 +36,8 @@ public class UNICAST3 extends Protocol implements AgeOutCache.Handler<Address> {
     /* ------------------------------------------ Properties  ------------------------------------------ */
 
     @Property(description="Time (in milliseconds) after which an idle incoming or outgoing connection is closed. The " +
-      "connection will get re-established when used again. 0 disables connection reaping")
+      "connection will get re-established when used again. 0 disables connection reaping. Note that this creates " +
+      "lingering connection entries, which increases memory over time.")
     protected long    conn_expiry_timeout=(long) 60000 * 2;
 
     @Property(description="Time (in ms) until a connection marked to be closed will get removed. 0 disables this")
@@ -402,7 +403,7 @@ public class UNICAST3 extends Protocol implements AgeOutCache.Handler<Address> {
                     handleResendingOfFirstMessage(sender, hdr.timestamp());
                     break;
                 case UnicastHeader3.XMIT_REQ:  // received ACK for previously sent message
-                    handleXmitRequest(sender, Util.streamableFromBuffer(SeqnoList.class, msg.getRawBuffer(), msg.getOffset(), msg.getLength()));
+                    handleXmitRequest(sender, Util.streamableFromBuffer(SeqnoList::new, msg.getRawBuffer(), msg.getOffset(), msg.getLength()));
                     break;
                 case UnicastHeader3.CLOSE:
                     log.trace(local_addr + "%s <-- CLOSE(%s: conn-id=%s)", local_addr, sender, hdr.conn_id);
